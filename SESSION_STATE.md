@@ -141,6 +141,21 @@ Settings Screen                    Player Screen
 
 ---
 
+## Releases
+
+### v1.0.0 - Multi-Camera Support (2026-01-20)
+**GitHub Release:** https://github.com/juste-un-gars/rtsp_to_tablet/releases/tag/v1.0.0
+
+**Features:**
+- Multi-camera support with navigation
+- Low-latency RTSP streaming (0.5s buffer)
+- Per-camera display mode (Fit/Fill/Crop)
+- Mute persistence across restarts
+
+**Download:** `app-release.apk` (self-signed)
+
+---
+
 ## Build Instructions
 
 ### Debug APK
@@ -149,9 +164,12 @@ Build from Android Studio: **Build > Build Bundle(s) / APK(s) > Build APK(s)**
 ### Release APK (Self-signed)
 1. **Build > Generate Signed Bundle / APK**
 2. Choose **APK**
-3. Use existing debug keystore or create new
+3. Use debug keystore: `C:\Users\FRANCK\.android\debug.keystore`
+   - Store password: `android`
+   - Key alias: `androiddebugkey`
+   - Key password: `android`
 4. Select **release** build variant
-5. APK location: `app/build/outputs/apk/release/`
+5. APK location: `app/release/app-release.apk`
 
 ---
 
@@ -164,5 +182,5 @@ Build from Android Studio: **Build > Build Bundle(s) / APK(s) > Build APK(s)**
 ---
 
 ## Last Updated
-**Date:** 2026-01-20 15:00
+**Date:** 2026-01-20 16:00
 **By:** Claude Code
