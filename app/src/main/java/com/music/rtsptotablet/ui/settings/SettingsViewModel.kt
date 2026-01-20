@@ -11,6 +11,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.rtsptotablet.data.model.AppSettings
 import com.music.rtsptotablet.data.model.BrightnessMode
+import com.music.rtsptotablet.data.model.CameraConfig
 import com.music.rtsptotablet.data.model.VideoDisplayMode
 import com.music.rtsptotablet.data.repository.PreferencesRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,8 +36,9 @@ class SettingsViewModel(
     private val _settings = MutableStateFlow(AppSettings())
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
-    private val _urlInputError = MutableStateFlow<String?>(null)
-    val urlInputError: StateFlow<String?> = _urlInputError.asStateFlow()
+    // Editing state for cameras (id -> edited camera)
+    private val _editingCameras = MutableStateFlow<Map<String, CameraConfig>>(emptyMap())
+    val editingCameras: StateFlow<Map<String, CameraConfig>> = _editingCameras.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -47,41 +49,105 @@ class SettingsViewModel(
     }
 
     /**
-     * Updates the RTSP URL setting.
-     * Validates the URL format before saving.
-     *
-     * @param url New RTSP URL
+     * Adds a new camera to the list.
      */
-    fun updateRtspUrl(url: String) {
-        _urlInputError.value = validateRtspUrl(url)
-        if (_urlInputError.value == null) {
-            viewModelScope.launch {
-                preferencesRepository.updateRtspUrl(url)
-            }
+    fun addCamera() {
+        val currentCameras = _settings.value.cameras
+        val newCamera = CameraConfig(
+            name = "Camera ${currentCameras.size + 1}",
+            url = ""
+        )
+        viewModelScope.launch {
+            preferencesRepository.addCamera(newCamera)
         }
     }
 
     /**
-     * Updates the URL without validation (for real-time input).
+     * Removes a camera from the list.
      *
-     * @param url Current URL input
+     * @param cameraId ID of the camera to remove
      */
-    fun onRtspUrlChanged(url: String) {
-        _settings.value = _settings.value.copy(rtspUrl = url)
-        _urlInputError.value = null
+    fun removeCamera(cameraId: String) {
+        viewModelScope.launch {
+            preferencesRepository.removeCamera(cameraId)
+        }
+        // Clear editing state for this camera
+        _editingCameras.value = _editingCameras.value - cameraId
     }
 
     /**
-     * Saves the current URL with validation.
+     * Updates camera name in editing state (not saved yet).
+     *
+     * @param cameraId ID of the camera
+     * @param name New name
      */
-    fun saveRtspUrl() {
-        val url = _settings.value.rtspUrl
-        _urlInputError.value = validateRtspUrl(url)
-        if (_urlInputError.value == null) {
-            viewModelScope.launch {
-                preferencesRepository.updateRtspUrl(url)
-            }
+    fun onCameraNameChanged(cameraId: String, name: String) {
+        val camera = _settings.value.cameras.find { it.id == cameraId } ?: return
+        val editingCamera = _editingCameras.value[cameraId] ?: camera
+        _editingCameras.value = _editingCameras.value + (cameraId to editingCamera.copy(name = name))
+    }
+
+    /**
+     * Updates camera URL in editing state (not saved yet).
+     *
+     * @param cameraId ID of the camera
+     * @param url New URL
+     */
+    fun onCameraUrlChanged(cameraId: String, url: String) {
+        val camera = _settings.value.cameras.find { it.id == cameraId } ?: return
+        val editingCamera = _editingCameras.value[cameraId] ?: camera
+        _editingCameras.value = _editingCameras.value + (cameraId to editingCamera.copy(url = url))
+    }
+
+    /**
+     * Updates camera display mode (saved immediately).
+     *
+     * @param cameraId ID of the camera
+     * @param mode New display mode
+     */
+    fun onCameraDisplayModeChanged(cameraId: String, mode: VideoDisplayMode) {
+        val camera = _settings.value.cameras.find { it.id == cameraId } ?: return
+        viewModelScope.launch {
+            preferencesRepository.updateCamera(camera.copy(displayMode = mode))
         }
+    }
+
+    /**
+     * Saves all pending camera edits.
+     */
+    fun saveCameras() {
+        val editedCameras = _editingCameras.value
+        if (editedCameras.isEmpty()) return
+
+        viewModelScope.launch {
+            editedCameras.values.forEach { camera ->
+                if (validateRtspUrl(camera.url) == null) {
+                    preferencesRepository.updateCamera(camera)
+                }
+            }
+            _editingCameras.value = emptyMap()
+        }
+    }
+
+    /**
+     * Gets the current value for a camera field (editing state or saved state).
+     *
+     * @param cameraId ID of the camera
+     * @return Camera config with current editing values
+     */
+    fun getCameraEditState(cameraId: String): CameraConfig? {
+        return _editingCameras.value[cameraId]
+            ?: _settings.value.cameras.find { it.id == cameraId }
+    }
+
+    /**
+     * Validates a camera URL.
+     *
+     * @param url URL to validate
+     * @return Error message or null if valid
+     */
+    fun validateCameraUrl(url: String): String? {
+        return validateRtspUrl(url)
     }
 
     /**
@@ -114,17 +180,6 @@ class SettingsViewModel(
     fun updateCustomBrightness(brightness: Float) {
         viewModelScope.launch {
             preferencesRepository.updateCustomBrightness(brightness)
-        }
-    }
-
-    /**
-     * Updates the video display mode.
-     *
-     * @param mode New display mode
-     */
-    fun updateVideoDisplayMode(mode: VideoDisplayMode) {
-        viewModelScope.launch {
-            preferencesRepository.updateVideoDisplayMode(mode)
         }
     }
 

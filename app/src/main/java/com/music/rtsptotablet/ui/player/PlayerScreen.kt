@@ -50,7 +50,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.music.rtsptotablet.data.model.VideoDisplayMode
 import com.music.rtsptotablet.data.repository.PreferencesRepository
 import com.music.rtsptotablet.player.PlayerState
 import com.music.rtsptotablet.screen.ScreenManager
@@ -143,6 +145,15 @@ fun PlayerScreen(
                     setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
                 }
             },
+            update = { playerView ->
+                // Update resize mode based on current camera's display mode
+                playerView.resizeMode = when (settings.currentCamera?.displayMode) {
+                    VideoDisplayMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    VideoDisplayMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                    VideoDisplayMode.CROP -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    null -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                }
+            },
             modifier = Modifier.fillMaxSize()
         )
 
@@ -214,19 +225,21 @@ fun PlayerScreen(
         ) {
             PlayerOverlayControls(
                 isMuted = uiState.isMuted,
+                hasMultipleCameras = settings.hasMultipleCameras,
+                currentCameraName = settings.currentCamera?.name,
                 onCloseClick = { /* Exit app or go back */ },
                 onSettingsClick = {
                     viewModel.hideControls()
                     onNavigateToSettings()
                 },
                 onMuteClick = { viewModel.toggleMute() },
-                onPreviousClick = { /* Future: previous camera */ },
-                onNextClick = { /* Future: next camera */ }
+                onPreviousClick = { viewModel.previousCamera() },
+                onNextClick = { viewModel.nextCamera() }
             )
         }
 
-        // No URL configured message
-        if (settings.rtspUrl.isBlank() && uiState.playerState is PlayerState.Idle) {
+        // No camera configured message
+        if (settings.cameras.isEmpty() && uiState.playerState is PlayerState.Idle) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -236,7 +249,7 @@ fun PlayerScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
-                        text = "No RTSP URL configured",
+                        text = "No camera configured",
                         color = Color.White,
                         style = MaterialTheme.typography.headlineSmall
                     )
@@ -256,6 +269,8 @@ fun PlayerScreen(
  * Shows close (X), settings (gear), mute, and navigation arrows.
  *
  * @param isMuted Whether audio is currently muted
+ * @param hasMultipleCameras Whether there are multiple cameras configured
+ * @param currentCameraName Name of the current camera (for display)
  * @param onCloseClick Callback when close button is clicked
  * @param onSettingsClick Callback when settings button is clicked
  * @param onMuteClick Callback when mute button is clicked
@@ -265,6 +280,8 @@ fun PlayerScreen(
 @Composable
 private fun PlayerOverlayControls(
     isMuted: Boolean,
+    hasMultipleCameras: Boolean,
+    currentCameraName: String?,
     onCloseClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onMuteClick: () -> Unit,
@@ -272,13 +289,14 @@ private fun PlayerOverlayControls(
     onNextClick: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        // Top bar with close, mute, and settings
+        // Top bar with close, camera name, mute, and settings
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
                 .align(Alignment.TopCenter),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             // Close button (top left)
             IconButton(
@@ -293,6 +311,21 @@ private fun PlayerOverlayControls(
                     tint = Color.White,
                     modifier = Modifier.size(24.dp)
                 )
+            }
+
+            // Camera name (center top)
+            if (!currentCameraName.isNullOrBlank()) {
+                Box(
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = currentCameraName,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             }
 
             // Right side buttons (mute + settings)
@@ -329,42 +362,44 @@ private fun PlayerOverlayControls(
             }
         }
 
-        // Navigation arrows (center sides) - prepared for future camera switching
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.Center)
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Previous camera (left)
-            IconButton(
-                onClick = onPreviousClick,
+        // Navigation arrows (center sides) - only show if multiple cameras
+        if (hasMultipleCameras) {
+            Row(
                 modifier = Modifier
-                    .size(56.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .fillMaxWidth()
+                    .align(Alignment.Center)
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                    contentDescription = "Previous camera",
-                    tint = Color.White,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
+                // Previous camera (left)
+                IconButton(
+                    onClick = onPreviousClick,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                        contentDescription = "Previous camera",
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
 
-            // Next camera (right)
-            IconButton(
-                onClick = onNextClick,
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "Next camera",
-                    tint = Color.White,
-                    modifier = Modifier.size(32.dp)
-                )
+                // Next camera (right)
+                IconButton(
+                    onClick = onNextClick,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = "Next camera",
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
             }
         }
     }

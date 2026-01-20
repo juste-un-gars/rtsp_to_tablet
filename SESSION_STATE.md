@@ -1,12 +1,12 @@
 # SESSION_STATE.md
 
 ## Current Session
-**Session:** SESSION_001
-**Name:** Initial Project Setup
+**Session:** SESSION_002
+**Name:** Multi-Camera Support & Performance Optimization
 **Status:** COMPLETED
 **Started:** 2026-01-20
 **Completed:** 2026-01-20
-**File:** `.claude/sessions/SESSION_001_initial_setup.md`
+**File:** `.claude/sessions/SESSION_002_multi_camera.md`
 
 ---
 
@@ -14,8 +14,8 @@
 
 | Item | Status |
 |------|--------|
-| Current Task | Complete - App functional |
-| Progress | 100% - Tested on device |
+| Current Task | Complete - Multi-camera support added |
+| Progress | 100% |
 | Blockers | None |
 
 ---
@@ -24,6 +24,7 @@
 
 | Session | Date | Description | Status |
 |---------|------|-------------|--------|
+| SESSION_002 | 2026-01-20 | Multi-camera support, performance optimization, mute persistence | COMPLETED |
 | SESSION_001 | 2026-01-20 | Initial project setup + bug fixes | COMPLETED |
 
 ---
@@ -40,72 +41,90 @@
 - [x] Full-screen UI with overlay controls
 - [x] Settings screen
 - [x] Screen management (brightness, wake lock)
-- [x] Mute button
-- [x] URL saving fix
-
-### Planned Features (Future)
-- [ ] Multiple camera support with navigation arrows
-
----
-
-## Changes Made (2026-01-20)
-
-### Bug Fixes
-1. **Gradle memory issue** - Added `gradle.properties` with `-Xmx4096m`
-2. **Missing launcher icons** - Created adaptive icons for all densities
-3. **URL not saving** - Fixed SettingsScreen to save on Done/Back
-
-### New Features
-1. **Mute button** - Added to overlay controls (top right, next to settings)
+- [x] Mute button with persistence
+- [x] **Multi-camera support with navigation**
+- [x] **Low-latency RTSP streaming**
+- [x] **Per-camera display mode (Fit/Fill/Crop)**
 
 ---
 
-## Files Created/Modified
+## Changes Made - SESSION_002 (2026-01-20)
 
-### Configuration
-- `settings.gradle.kts` - Gradle settings
-- `build.gradle.kts` - Root build config
-- `gradle.properties` - JVM memory settings (NEW)
-- `gradle/libs.versions.toml` - Version catalog
-- `app/build.gradle.kts` - App module config
-- `app/proguard-rules.pro` - ProGuard rules
-- `app/src/main/AndroidManifest.xml` - App manifest
+### Performance Optimization
+1. **Low-latency RTSP streaming** - Reduced buffer from 15s to 0.5s
+   - `MIN_BUFFER_MS = 500ms`
+   - `MAX_BUFFER_MS = 2000ms`
+   - `BUFFER_FOR_PLAYBACK_MS = 250ms`
+   - Force TCP transport for stability
 
-### Launcher Icons (NEW)
-- `res/drawable/ic_launcher_foreground.xml`
-- `res/drawable/ic_launcher_background.xml`
-- `res/mipmap-anydpi-v26/ic_launcher.xml`
-- `res/mipmap-anydpi-v26/ic_launcher_round.xml`
-- `res/mipmap-*/ic_launcher.xml` (all densities)
-- `res/mipmap-*/ic_launcher_round.xml` (all densities)
+### Multi-Camera Support
+1. **CameraConfig data class** - id, name, url, displayMode per camera
+2. **Camera list management** - Add/remove/edit cameras in settings
+3. **Navigation arrows** - Switch between cameras (circular navigation)
+4. **Camera name display** - Shows current camera name in overlay
+5. **Per-camera display mode** - Fit/Fill/Crop option for each camera
+6. **Migration** - Automatic migration from legacy single URL
 
-### Source Files
-- `RtspToTabletApplication.kt` - Application class
-- `MainActivity.kt` - Main entry point
-- `navigation/Screen.kt` - Navigation routes
-- `data/model/AppSettings.kt` - Settings data model
-- `data/repository/PreferencesRepository.kt` - DataStore repository
-- `screen/ScreenManager.kt` - Screen/brightness control
-- `player/PlayerState.kt` - Player state definitions (+ isMuted)
-- `ui/player/PlayerViewModel.kt` - Player business logic (+ toggleMute)
-- `ui/player/PlayerScreen.kt` - Player UI (+ mute button)
-- `ui/settings/SettingsViewModel.kt` - Settings business logic
-- `ui/settings/SettingsScreen.kt` - Settings UI (+ URL save fix)
-- `ui/theme/Theme.kt` - Material 3 theme
+### Mute State Persistence
+1. **Saved to preferences** - Mute state persists across app restarts
+2. **Restored on startup** - Player volume and UI sync with saved state
 
-### Resources
-- `res/values/strings.xml` - String resources
-- `res/values/themes.xml` - Theme definitions
+### Build Configuration
+1. **Release signing** - Configured self-signed APK using debug keystore
+2. **gradlew.bat** - Added Gradle wrapper script
 
 ---
 
-## Overlay Controls Layout
+## Files Modified - SESSION_002
 
+### Data Model
+- `data/model/AppSettings.kt` - Added CameraConfig, cameras list, isMuted
+
+### Repository
+- `data/repository/PreferencesRepository.kt` - JSON serialization for cameras, mute state persistence, migration from legacy URL
+
+### ViewModels
+- `ui/settings/SettingsViewModel.kt` - Camera management methods (add, remove, update)
+- `ui/player/PlayerViewModel.kt` - Camera navigation (next/prev), mute persistence, low-latency config
+
+### UI
+- `ui/settings/SettingsScreen.kt` - Camera list UI with cards, add/delete buttons, per-camera display mode selector
+- `ui/player/PlayerScreen.kt` - Navigation arrows (conditional), camera name display, dynamic resize mode
+
+### Build
+- `app/build.gradle.kts` - Release signing configuration
+- `gradlew.bat` - Gradle wrapper script (created)
+
+---
+
+## Architecture
+
+### Camera Configuration Flow
+```
+Settings Screen                    Player Screen
+     │                                  │
+     ▼                                  ▼
+┌─────────────┐                  ┌─────────────┐
+│ Add Camera  │                  │   ◄  ►      │ Navigation
+│ Edit Name   │                  │             │ Arrows
+│ Edit URL    │                  │  Camera 1   │ (if multiple)
+│ Set Display │                  │             │
+│ Delete      │                  └─────────────┘
+└─────────────┘                         │
+      │                                 ▼
+      ▼                          Only active camera
+┌─────────────┐                  stream is loaded
+│ DataStore   │ ◄────────────────────────┘
+│ (JSON)      │
+└─────────────┘
+```
+
+### Overlay Controls Layout
 ```
 ┌─────────────────────────────────────┐
-│ [X]                    [🔊] [⚙️]    │  <- Top bar
+│ [X]        Camera Name    [🔊] [⚙️] │  <- Top bar
 │                                     │
-│ [<]                          [>]    │  <- Navigation (future)
+│ [<]                          [>]    │  <- Navigation (if >1 camera)
 │                                     │
 │                                     │
 └─────────────────────────────────────┘
@@ -118,16 +137,32 @@
 | # | Session File | Description |
 |---|--------------|-------------|
 | 001 | `SESSION_001_initial_setup.md` | Initial Android project creation |
+| 002 | `SESSION_002_multi_camera.md` | Multi-camera support, performance |
+
+---
+
+## Build Instructions
+
+### Debug APK
+Build from Android Studio: **Build > Build Bundle(s) / APK(s) > Build APK(s)**
+
+### Release APK (Self-signed)
+1. **Build > Generate Signed Bundle / APK**
+2. Choose **APK**
+3. Use existing debug keystore or create new
+4. Select **release** build variant
+5. APK location: `app/build/outputs/apk/release/`
 
 ---
 
 ## Next Steps (Future Sessions)
-1. [ ] Implement multiple camera support
-2. [ ] Add camera URL list management in settings
-3. [ ] Connect navigation arrows to camera switching
+1. [ ] Add camera reordering (drag & drop)
+2. [ ] Add camera preview thumbnails in settings
+3. [ ] Add swipe gestures for camera switching
+4. [ ] Add camera groups/folders
 
 ---
 
 ## Last Updated
-**Date:** 2026-01-20 11:00
+**Date:** 2026-01-20 15:00
 **By:** Claude Code

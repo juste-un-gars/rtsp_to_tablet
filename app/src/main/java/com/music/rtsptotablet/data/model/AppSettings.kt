@@ -8,6 +8,21 @@
 package com.music.rtsptotablet.data.model
 
 /**
+ * Configuration for a single camera.
+ *
+ * @property id Unique identifier for the camera
+ * @property name Display name for the camera
+ * @property url RTSP URL for the camera stream
+ * @property displayMode How to display the video (fit, fill, crop)
+ */
+data class CameraConfig(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String = "",
+    val url: String = "",
+    val displayMode: VideoDisplayMode = VideoDisplayMode.FIT
+)
+
+/**
  * Video display mode options for the player.
  */
 enum class VideoDisplayMode {
@@ -35,7 +50,8 @@ enum class BrightnessMode {
  * Application settings data class.
  * Contains all configurable options for the RTSP player.
  *
- * @property rtspUrl The RTSP stream URL to connect to
+ * @property cameras List of configured cameras
+ * @property currentCameraIndex Index of the currently selected camera
  * @property allowScreenOff Whether to allow the screen to turn off during playback
  * @property brightnessMode How to handle screen brightness
  * @property customBrightness Custom brightness level (0.0 to 1.0) when brightnessMode is CUSTOM
@@ -45,17 +61,39 @@ enum class BrightnessMode {
  *
  * @sample
  * val settings = AppSettings(
- *     rtspUrl = "rtsp://192.168.1.100:554/stream",
+ *     cameras = listOf(CameraConfig(name = "Front Door", url = "rtsp://192.168.1.100:554/stream")),
  *     allowScreenOff = true,
  *     brightnessMode = BrightnessMode.MINIMUM
  * )
  */
 data class AppSettings(
-    val rtspUrl: String = "",
+    val cameras: List<CameraConfig> = emptyList(),
+    val currentCameraIndex: Int = 0,
+    val isMuted: Boolean = false,
     val allowScreenOff: Boolean = true,
     val brightnessMode: BrightnessMode = BrightnessMode.AUTO,
     val customBrightness: Float = 0.5f,
     val videoDisplayMode: VideoDisplayMode = VideoDisplayMode.FIT,
     val autoReconnect: Boolean = true,
     val reconnectDelayMs: Long = 3000L
-)
+) {
+    /** Returns the currently selected camera, or null if no cameras configured */
+    val currentCamera: CameraConfig?
+        get() = cameras.getOrNull(currentCameraIndex)
+
+    /** Returns the RTSP URL of the current camera for backward compatibility */
+    val rtspUrl: String
+        get() = currentCamera?.url ?: ""
+
+    /** Returns true if there are multiple cameras configured */
+    val hasMultipleCameras: Boolean
+        get() = cameras.size > 1
+
+    /** Returns true if navigation to previous camera is possible */
+    val canGoPrevious: Boolean
+        get() = cameras.size > 1
+
+    /** Returns true if navigation to next camera is possible */
+    val canGoNext: Boolean
+        get() = cameras.size > 1
+}

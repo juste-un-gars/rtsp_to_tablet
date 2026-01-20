@@ -13,12 +13,16 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.music.rtsptotablet.data.model.AppSettings
 import com.music.rtsptotablet.data.model.BrightnessMode
+import com.music.rtsptotablet.data.model.CameraConfig
 import com.music.rtsptotablet.data.model.VideoDisplayMode
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -41,22 +45,42 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class PreferencesRepository(private val context: Context) {
 
     private object PreferencesKeys {
-        val RTSP_URL = stringPreferencesKey("rtsp_url")
+        val CAMERAS_JSON = stringPreferencesKey("cameras_json")
+        val CURRENT_CAMERA_INDEX = intPreferencesKey("current_camera_index")
+        val IS_MUTED = booleanPreferencesKey("is_muted")
         val ALLOW_SCREEN_OFF = booleanPreferencesKey("allow_screen_off")
         val BRIGHTNESS_MODE = stringPreferencesKey("brightness_mode")
         val CUSTOM_BRIGHTNESS = floatPreferencesKey("custom_brightness")
         val VIDEO_DISPLAY_MODE = stringPreferencesKey("video_display_mode")
         val AUTO_RECONNECT = booleanPreferencesKey("auto_reconnect")
         val RECONNECT_DELAY_MS = longPreferencesKey("reconnect_delay_ms")
+        // Legacy key for migration
+        val RTSP_URL_LEGACY = stringPreferencesKey("rtsp_url")
     }
 
     /**
      * Flow of current app settings.
      * Emits new values whenever settings change.
+     * Includes migration from legacy single URL to camera list.
      */
     val settings: Flow<AppSettings> = context.dataStore.data.map { preferences ->
+        // Parse cameras from JSON or migrate from legacy single URL
+        val cameras = preferences[PreferencesKeys.CAMERAS_JSON]?.let { json ->
+            parseCamerasJson(json)
+        } ?: run {
+            // Migration: check for legacy single URL
+            val legacyUrl = preferences[PreferencesKeys.RTSP_URL_LEGACY]
+            if (!legacyUrl.isNullOrBlank()) {
+                listOf(CameraConfig(name = "Camera 1", url = legacyUrl))
+            } else {
+                emptyList()
+            }
+        }
+
         AppSettings(
-            rtspUrl = preferences[PreferencesKeys.RTSP_URL] ?: "",
+            cameras = cameras,
+            currentCameraIndex = preferences[PreferencesKeys.CURRENT_CAMERA_INDEX] ?: 0,
+            isMuted = preferences[PreferencesKeys.IS_MUTED] ?: false,
             allowScreenOff = preferences[PreferencesKeys.ALLOW_SCREEN_OFF] ?: true,
             brightnessMode = preferences[PreferencesKeys.BRIGHTNESS_MODE]?.let {
                 BrightnessMode.valueOf(it)
@@ -71,13 +95,128 @@ class PreferencesRepository(private val context: Context) {
     }
 
     /**
-     * Updates the RTSP stream URL.
-     *
-     * @param url New RTSP URL to save
+     * Parses cameras list from JSON string.
      */
-    suspend fun updateRtspUrl(url: String) {
+    private fun parseCamerasJson(json: String): List<CameraConfig> {
+        return try {
+            val jsonArray = JSONArray(json)
+            (0 until jsonArray.length()).map { i ->
+                val obj = jsonArray.getJSONObject(i)
+                CameraConfig(
+                    id = obj.optString("id", java.util.UUID.randomUUID().toString()),
+                    name = obj.optString("name", ""),
+                    url = obj.optString("url", ""),
+                    displayMode = obj.optString("displayMode", "").let { mode ->
+                        try {
+                            if (mode.isNotEmpty()) VideoDisplayMode.valueOf(mode) else VideoDisplayMode.FIT
+                        } catch (e: Exception) {
+                            VideoDisplayMode.FIT
+                        }
+                    }
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Converts cameras list to JSON string.
+     */
+    private fun camerasToJson(cameras: List<CameraConfig>): String {
+        val jsonArray = JSONArray()
+        cameras.forEach { camera ->
+            val obj = JSONObject().apply {
+                put("id", camera.id)
+                put("name", camera.name)
+                put("url", camera.url)
+                put("displayMode", camera.displayMode.name)
+            }
+            jsonArray.put(obj)
+        }
+        return jsonArray.toString()
+    }
+
+    /**
+     * Updates the list of cameras.
+     *
+     * @param cameras New list of cameras to save
+     */
+    suspend fun updateCameras(cameras: List<CameraConfig>) {
         context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.RTSP_URL] = url
+            preferences[PreferencesKeys.CAMERAS_JSON] = camerasToJson(cameras)
+        }
+    }
+
+    /**
+     * Adds a new camera to the list.
+     *
+     * @param camera Camera configuration to add
+     */
+    suspend fun addCamera(camera: CameraConfig) {
+        context.dataStore.edit { preferences ->
+            val currentJson = preferences[PreferencesKeys.CAMERAS_JSON]
+            val cameras = currentJson?.let { parseCamerasJson(it) }?.toMutableList() ?: mutableListOf()
+            cameras.add(camera)
+            preferences[PreferencesKeys.CAMERAS_JSON] = camerasToJson(cameras)
+        }
+    }
+
+    /**
+     * Updates a specific camera.
+     *
+     * @param camera Updated camera configuration (matched by id)
+     */
+    suspend fun updateCamera(camera: CameraConfig) {
+        context.dataStore.edit { preferences ->
+            val currentJson = preferences[PreferencesKeys.CAMERAS_JSON]
+            val cameras = currentJson?.let { parseCamerasJson(it) }?.toMutableList() ?: mutableListOf()
+            val index = cameras.indexOfFirst { it.id == camera.id }
+            if (index >= 0) {
+                cameras[index] = camera
+                preferences[PreferencesKeys.CAMERAS_JSON] = camerasToJson(cameras)
+            }
+        }
+    }
+
+    /**
+     * Removes a camera from the list.
+     *
+     * @param cameraId ID of the camera to remove
+     */
+    suspend fun removeCamera(cameraId: String) {
+        context.dataStore.edit { preferences ->
+            val currentJson = preferences[PreferencesKeys.CAMERAS_JSON]
+            val cameras = currentJson?.let { parseCamerasJson(it) }?.toMutableList() ?: mutableListOf()
+            cameras.removeAll { it.id == cameraId }
+            preferences[PreferencesKeys.CAMERAS_JSON] = camerasToJson(cameras)
+            // Adjust current index if needed
+            val currentIndex = preferences[PreferencesKeys.CURRENT_CAMERA_INDEX] ?: 0
+            if (currentIndex >= cameras.size && cameras.isNotEmpty()) {
+                preferences[PreferencesKeys.CURRENT_CAMERA_INDEX] = cameras.size - 1
+            }
+        }
+    }
+
+    /**
+     * Updates the currently selected camera index.
+     *
+     * @param index Index of the camera to select
+     */
+    suspend fun updateCurrentCameraIndex(index: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.CURRENT_CAMERA_INDEX] = index
+        }
+    }
+
+    /**
+     * Updates the mute state.
+     *
+     * @param isMuted Whether audio is muted
+     */
+    suspend fun updateMuteState(isMuted: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.IS_MUTED] = isMuted
         }
     }
 
@@ -154,7 +293,9 @@ class PreferencesRepository(private val context: Context) {
      */
     suspend fun updateSettings(settings: AppSettings) {
         context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.RTSP_URL] = settings.rtspUrl
+            preferences[PreferencesKeys.CAMERAS_JSON] = camerasToJson(settings.cameras)
+            preferences[PreferencesKeys.CURRENT_CAMERA_INDEX] = settings.currentCameraIndex
+            preferences[PreferencesKeys.IS_MUTED] = settings.isMuted
             preferences[PreferencesKeys.ALLOW_SCREEN_OFF] = settings.allowScreenOff
             preferences[PreferencesKeys.BRIGHTNESS_MODE] = settings.brightnessMode.name
             preferences[PreferencesKeys.CUSTOM_BRIGHTNESS] = settings.customBrightness

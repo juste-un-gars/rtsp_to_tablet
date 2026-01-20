@@ -13,6 +13,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.rtsp.RtspMediaSource
 import com.music.rtsptotablet.data.model.AppSettings
@@ -101,8 +102,15 @@ class PlayerViewModel(
     init {
         viewModelScope.launch {
             preferencesRepository.settings.collect { newSettings ->
+                val isFirstLoad = _settings.value.cameras.isEmpty() && newSettings.cameras.isNotEmpty()
                 _settings.value = newSettings
                 _uiState.update { it.copy(rtspUrl = newSettings.rtspUrl) }
+
+                // Restore mute state on first load
+                if (isFirstLoad) {
+                    _uiState.update { it.copy(isMuted = newSettings.isMuted) }
+                    exoPlayer?.volume = if (newSettings.isMuted) 0f else 1f
+                }
             }
         }
     }
@@ -113,15 +121,35 @@ class PlayerViewModel(
      * @return ExoPlayer instance
      */
     fun getPlayer(): ExoPlayer {
-        return exoPlayer ?: createPlayer().also { exoPlayer = it }
+        return exoPlayer ?: createPlayer().also { player ->
+            exoPlayer = player
+            // Sync UI state with persisted mute state
+            _uiState.update { it.copy(isMuted = _settings.value.isMuted) }
+        }
     }
 
     private fun createPlayer(): ExoPlayer {
+        // Configure minimal buffering for low latency RTSP streaming
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                MIN_BUFFER_MS,           // Minimum buffer before playback starts
+                MAX_BUFFER_MS,           // Maximum buffer size
+                BUFFER_FOR_PLAYBACK_MS,  // Buffer required to start playback
+                BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS  // Buffer after rebuffer
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
         return ExoPlayer.Builder(context)
+            .setLoadControl(loadControl)
             .build()
             .apply {
                 addListener(playerListener)
                 playWhenReady = true
+                // Set video scaling mode for faster rendering
+                videoScalingMode = androidx.media3.common.C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+                // Restore mute state
+                volume = if (_settings.value.isMuted) 0f else 1f
             }
     }
 
@@ -165,6 +193,8 @@ class PlayerViewModel(
         val player = getPlayer()
         val mediaItem = MediaItem.fromUri(rtspUrl)
         val rtspMediaSource = RtspMediaSource.Factory()
+            .setForceUseRtpTcp(true)  // TCP is more reliable than UDP for most networks
+            .setTimeoutMs(RTSP_TIMEOUT_MS)  // Faster timeout for quicker error detection
             .createMediaSource(mediaItem)
 
         player.setMediaSource(rtspMediaSource)
@@ -217,12 +247,17 @@ class PlayerViewModel(
     }
 
     /**
-     * Toggles audio mute state.
+     * Toggles audio mute state and persists it.
      */
     fun toggleMute() {
         val newMuted = !_uiState.value.isMuted
         exoPlayer?.volume = if (newMuted) 0f else 1f
         _uiState.update { it.copy(isMuted = newMuted) }
+
+        // Persist mute state
+        viewModelScope.launch {
+            preferencesRepository.updateMuteState(newMuted)
+        }
     }
 
     /**
@@ -231,6 +266,40 @@ class PlayerViewModel(
     fun reconnect() {
         reconnectAttempt = 0
         startPlayback()
+    }
+
+    /**
+     * Navigates to the next camera in the list.
+     * Stops current stream and starts the next one.
+     */
+    fun nextCamera() {
+        val cameras = _settings.value.cameras
+        if (cameras.size <= 1) return
+
+        val currentIndex = _settings.value.currentCameraIndex
+        val nextIndex = (currentIndex + 1) % cameras.size
+
+        viewModelScope.launch {
+            preferencesRepository.updateCurrentCameraIndex(nextIndex)
+            // Stream will restart automatically due to settings change
+        }
+    }
+
+    /**
+     * Navigates to the previous camera in the list.
+     * Stops current stream and starts the previous one.
+     */
+    fun previousCamera() {
+        val cameras = _settings.value.cameras
+        if (cameras.size <= 1) return
+
+        val currentIndex = _settings.value.currentCameraIndex
+        val prevIndex = if (currentIndex <= 0) cameras.size - 1 else currentIndex - 1
+
+        viewModelScope.launch {
+            preferencesRepository.updateCurrentCameraIndex(prevIndex)
+            // Stream will restart automatically due to settings change
+        }
     }
 
     private fun scheduleReconnect() {
@@ -276,5 +345,15 @@ class PlayerViewModel(
 
     companion object {
         private const val MAX_RECONNECT_ATTEMPTS = 10
+
+        // Low latency buffer configuration (in milliseconds)
+        // These values minimize delay for real-time RTSP streaming
+        private const val MIN_BUFFER_MS = 500           // 0.5 second min buffer
+        private const val MAX_BUFFER_MS = 2000          // 2 seconds max buffer
+        private const val BUFFER_FOR_PLAYBACK_MS = 250  // Start playback after 250ms
+        private const val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 500  // 500ms after rebuffer
+
+        // RTSP connection timeout
+        private const val RTSP_TIMEOUT_MS = 5000L  // 5 seconds
     }
 }

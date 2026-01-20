@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -23,10 +24,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -48,6 +54,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.music.rtsptotablet.data.model.BrightnessMode
+import com.music.rtsptotablet.data.model.CameraConfig
 import com.music.rtsptotablet.data.model.VideoDisplayMode
 import com.music.rtsptotablet.data.repository.PreferencesRepository
 
@@ -68,13 +75,13 @@ fun SettingsScreen(
 ) {
     val viewModel = remember { SettingsViewModel(preferencesRepository) }
     val settings by viewModel.settings.collectAsState()
-    val urlError by viewModel.urlInputError.collectAsState()
+    val editingCameras by viewModel.editingCameras.collectAsState()
     val focusManager = LocalFocusManager.current
 
-    // Save URL when leaving the screen
+    // Save cameras when leaving the screen
     DisposableEffect(Unit) {
         onDispose {
-            viewModel.saveRtspUrl()
+            viewModel.saveCameras()
         }
     }
 
@@ -84,7 +91,7 @@ fun SettingsScreen(
                 title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = {
-                        viewModel.saveRtspUrl()
+                        viewModel.saveCameras()
                         onNavigateBack()
                     }) {
                         Icon(
@@ -105,32 +112,57 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // RTSP URL Section
-            SettingsSection(title = "Stream Configuration") {
-                OutlinedTextField(
-                    value = settings.rtspUrl,
-                    onValueChange = { viewModel.onRtspUrlChanged(it) },
-                    label = { Text("RTSP URL") },
-                    placeholder = { Text("rtsp://192.168.1.100:554/stream") },
-                    isError = urlError != null,
-                    supportingText = if (urlError != null) {
-                        { Text(urlError!!) }
-                    } else {
-                        { Text("Tap Done on keyboard to save") }
-                    },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Uri,
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(
+            // Cameras Section
+            SettingsSection(title = "Cameras") {
+                // Camera list
+                settings.cameras.forEachIndexed { index, camera ->
+                    val editingCamera = editingCameras[camera.id] ?: camera
+                    CameraConfigCard(
+                        camera = editingCamera,
+                        index = index + 1,
+                        onNameChange = { viewModel.onCameraNameChanged(camera.id, it) },
+                        onUrlChange = { viewModel.onCameraUrlChanged(camera.id, it) },
+                        onDisplayModeChange = { viewModel.onCameraDisplayModeChanged(camera.id, it) },
+                        onDelete = { viewModel.removeCamera(camera.id) },
                         onDone = {
-                            viewModel.saveRtspUrl()
+                            viewModel.saveCameras()
                             focusManager.clearFocus()
+                        },
+                        canDelete = settings.cameras.size > 1
+                    )
+                    if (index < settings.cameras.size - 1) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+
+                // Add camera button
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    IconButton(
+                        onClick = { viewModel.addCamera() },
+                        modifier = Modifier
+                            .padding(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Add camera",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Add camera",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.labelLarge
+                            )
                         }
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    }
+                }
             }
 
             HorizontalDivider()
@@ -190,44 +222,6 @@ fun SettingsScreen(
                             valueRange = 0.01f..1f,
                             modifier = Modifier.fillMaxWidth()
                         )
-                    }
-                }
-            }
-
-            HorizontalDivider()
-
-            // Display Settings Section
-            SettingsSection(title = "Display Settings") {
-                Text(
-                    text = "Video Display Mode",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Column(modifier = Modifier.selectableGroup()) {
-                    VideoDisplayMode.entries.forEach { mode ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .selectable(
-                                    selected = settings.videoDisplayMode == mode,
-                                    onClick = { viewModel.updateVideoDisplayMode(mode) },
-                                    role = Role.RadioButton
-                                )
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = settings.videoDisplayMode == mode,
-                                onClick = null
-                            )
-                            Column(modifier = Modifier.padding(start = 8.dp)) {
-                                Text(text = mode.toDisplayString())
-                                Text(
-                                    text = mode.toDescription(),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
                     }
                 }
             }
@@ -314,6 +308,130 @@ private fun SettingsSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange
         )
+    }
+}
+
+/**
+ * Card for configuring a single camera.
+ */
+@Composable
+private fun CameraConfigCard(
+    camera: CameraConfig,
+    index: Int,
+    onNameChange: (String) -> Unit,
+    onUrlChange: (String) -> Unit,
+    onDisplayModeChange: (VideoDisplayMode) -> Unit,
+    onDelete: () -> Unit,
+    onDone: () -> Unit,
+    canDelete: Boolean
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Header with index and delete button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Camera $index",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                if (canDelete) {
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete camera",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            // Name field
+            OutlinedTextField(
+                value = camera.name,
+                onValueChange = onNameChange,
+                label = { Text("Name") },
+                placeholder = { Text("e.g. Front Door") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // URL field
+            OutlinedTextField(
+                value = camera.url,
+                onValueChange = onUrlChange,
+                label = { Text("RTSP URL") },
+                placeholder = { Text("rtsp://192.168.1.100:554/stream") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(onDone = { onDone() }),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // Display mode selector
+            Text(
+                text = "Display Mode",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                VideoDisplayMode.entries.forEach { mode ->
+                    val isSelected = camera.displayMode == mode
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .selectable(
+                                selected = isSelected,
+                                onClick = { onDisplayModeChange(mode) },
+                                role = Role.RadioButton
+                            ),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSelected)
+                                MaterialTheme.colorScheme.primaryContainer
+                            else
+                                MaterialTheme.colorScheme.surface
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = mode.toDisplayString(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isSelected)
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                else
+                                    MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
