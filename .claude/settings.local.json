@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(copy:*)",
+      "Bash(copy \"E:\\\\ProjetsAndroidStudio\\\\rtsp_to_tablet\\\\app\\\\src\\\\main\\\\res\\\\mipmap-hdpi\\\\ic_launcher.xml\" \"E:\\\\ProjetsAndroidStudio\\\\rtsp_to_tablet\\\\app\\\\src\\\\main\\\\res\\\\mipmap-xhdpi\\\\ic_launcher.xml\")",
+      "Bash(copy \"E:\\\\ProjetsAndroidStudio\\\\rtsp_to_tablet\\\\app\\\\src\\\\main\\\\res\\\\mipmap-hdpi\\\\ic_launcher.xml\" \"E:\\\\ProjetsAndroidStudio\\\\rtsp_to_tablet\\\\app\\\\src\\\\main\\\\res\\\\mipmap-xxhdpi\\\\ic_launcher.xml\")"
+    ]
+  }
+}

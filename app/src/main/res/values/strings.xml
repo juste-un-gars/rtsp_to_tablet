@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    @file strings.xml
+    @description String resources for RTSP to Tablet app
+    @session SESSION_001
+    @created 2026-01-20
+-->
+<resources>
+    <string name="app_name">RTSP to Tablet</string>
+
+    <!-- Player -->
+    <string name="player_no_url">No RTSP URL configured</string>
+    <string name="player_tap_settings">Tap to open settings</string>
+    <string name="player_reconnecting">Reconnecting… (%1$d)</string>
+    <string name="player_error_network">Network connection failed</string>
+    <string name="player_error_timeout">Connection timeout</string>
+    <string name="player_error_format">Unsupported stream format</string>
+
+    <!-- Controls -->
+    <string name="control_close">Close</string>
+    <string name="control_settings">Settings</string>
+    <string name="control_previous">Previous camera</string>
+    <string name="control_next">Next camera</string>
+    <string name="control_retry">Retry</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_stream_config">Stream Configuration</string>
+    <string name="settings_rtsp_url">RTSP URL</string>
+    <string name="settings_rtsp_url_hint">rtsp://192.168.1.100:554/stream</string>
+    <string name="settings_screen">Screen Settings</string>
+    <string name="settings_allow_screen_off">Allow screen to turn off</string>
+    <string name="settings_allow_screen_off_desc">Screen can turn off during playback to save power</string>
+    <string name="settings_brightness_mode">Brightness Mode</string>
+    <string name="settings_brightness_auto">Auto (System)</string>
+    <string name="settings_brightness_min">Minimum</string>
+    <string name="settings_brightness_custom">Custom</string>
+    <string name="settings_brightness_level">Brightness: %1$d%%</string>
+    <string name="settings_display">Display Settings</string>
+    <string name="settings_display_mode">Video Display Mode</string>
+    <string name="settings_display_fit">Fit</string>
+    <string name="settings_display_fit_desc">Video fits inside screen, may show black bars</string>
+    <string name="settings_display_fill">Fill</string>
+    <string name="settings_display_fill_desc">Video fills entire screen, may be stretched</string>
+    <string name="settings_display_crop">Crop</string>
+    <string name="settings_display_crop_desc">Video fills screen maintaining ratio, may be cropped</string>
+    <string name="settings_reconnection">Reconnection</string>
+    <string name="settings_auto_reconnect">Auto-reconnect</string>
+    <string name="settings_auto_reconnect_desc">Automatically reconnect when stream fails</string>
+    <string name="settings_reconnect_delay">Reconnect delay: %1$ds</string>
+
+    <!-- Errors -->
+    <string name="error_url_invalid">URL must start with rtsp://</string>
+    <string name="error_url_short">URL is too short</string>
+    <string name="error_max_reconnect">Could not reconnect after %1$d attempts</string>
+</resources>
